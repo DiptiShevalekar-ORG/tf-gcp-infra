@@ -21,7 +21,10 @@ jobs:
         
         - name: Terraform Init
           run: terraform init
-
+    
+        - name: Terraform validate
+          run: terraform validate
+          
         - name : Check failure
           if : failure()
           run : exit 1
