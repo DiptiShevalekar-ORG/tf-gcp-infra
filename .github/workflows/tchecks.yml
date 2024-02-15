@@ -6,8 +6,8 @@ on:
       - main
 
 jobs:
-  setup-mysql:
-    name: Setup MySQL
+  build:
+    name: terraform
     runs-on: ubuntu-latest
 
     steps:
