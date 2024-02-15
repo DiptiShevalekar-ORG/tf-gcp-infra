@@ -22,6 +22,10 @@ jobs:
         - name: Terraform Init
           run: terraform init
 
+        - name : Check failure
+          if : failure()
+          run : exit 1
+
         - name: Print on Success
           if: ${{ success() }}
           run: echo "The Terraform workflow run was successful."
