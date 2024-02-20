@@ -1,7 +1,7 @@
 provider "google" {
   credentials = file(var.credentialsFile)
   project     = var.projectId
-  region      = var.region
+  region      = var.regio
 }
 
 locals {
