@@ -4,40 +4,75 @@ provider "google" {
   region      = var.region
 }
 
-locals {
-  vpc_names = [for i in range(var.num_vpc) : "csye-vpc-${i}"]
-}
 
 resource "google_compute_network" "vpc" {
-  count                   = var.num_vpc
-  name                    = local.vpc_names[count.index]
-  auto_create_subnetworks = false
-  routing_mode            = "REGIONAL"
+ 
+  name                            = "webapp-vpc"
+  auto_create_subnetworks         = false
+  routing_mode                    = "REGIONAL"
   delete_default_routes_on_create = true
 }
 
 resource "google_compute_subnetwork" "webapp_subnet" {
-  count         = var.num_vpc * var.num_webapp_subnets_per_vpc
-  name          = "webapp-${count.index}"
+  name          = "webapp-subnet"
   region        = var.region
-  network       = google_compute_network.vpc[floor(count.index / var.num_webapp_subnets_per_vpc)].self_link
-  ip_cidr_range = "10.${count.index}.0.0/24"  
+  network       = google_compute_network.vpc.self_link
+  ip_cidr_range = "10.0.0.0/24"
 }
 
 resource "google_compute_subnetwork" "db_subnet" {
-  count         = var.num_vpc * var.num_db_subnets_per_vpc
-  name          = "db-${count.index}"
+
+  name          = "db-subnet"
   region        = var.region
-  network       = google_compute_network.vpc[floor(count.index / var.num_db_subnets_per_vpc)].self_link
-  ip_cidr_range = "10.${count.index + 100}.0.0/24"
+  network       = google_compute_network.vpc.self_link
+  ip_cidr_range = "10.100.0.0/24"
 }
 
 resource "google_compute_route" "webapp_route" {
-  count                 = var.num_vpc
-  name                  = "webapp-route-${count.index}"
-  network               = google_compute_network.vpc[count.index].self_link
-  dest_range            = "0.0.0.0/0"
-  next_hop_gateway      = "default-internet-gateway"
-  priority              = 1000
-  tags                  = ["webapp"]
+
+  name             = "webapp-route"
+  network          = google_compute_network.vpc.self_link
+  dest_range       = "0.0.0.0/0"
+  next_hop_gateway = "default-internet-gateway"
+  priority         = 1000
+  tags             = ["webapp-subnet"]
+}
+
+resource "google_compute_instance" "default" {
+  name         = "my-instance"
+  machine_type = "n2-standard-2"
+  zone         = var.zone
+
+  boot_disk {
+    initialize_params {
+      image = "projects/cloudassignment03-413923/global/images/packer-1708561578"
+      size  = 100
+      type  = "pd-balanced"
+    }
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc.self_link
+    subnetwork = google_compute_subnetwork.webapp_subnet.self_link
+  }
+
+  service_account {
+    email  = "csye-gcp-assignment04-sa@cloudassignment03-413923.iam.gserviceaccount.com"
+    scopes = ["cloud-platform"]
+  }
+}
+
+resource "google_compute_firewall" "rules" {
+  project     = var.projectId
+  name        = "my-firewall-rule"
+  network     = google_compute_network.vpc.self_link
+  description = "Creates firewall rule targeting tagged instances"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3002"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["webapp-subnet"]
 }
