@@ -49,7 +49,7 @@ variable "DB_CIDR_Range" {
 }
 
 variable "Port" {
-  default = "8080"
+  default = "3002"
 }
 
 variable "ImagePath" {
