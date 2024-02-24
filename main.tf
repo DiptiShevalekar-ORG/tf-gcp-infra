@@ -42,13 +42,13 @@ resource "google_compute_route" "webapp_route" {
 resource "google_compute_address" "gcpcomputeaddress" {
   project = var.projectId
   name = var.gcpcomputeaddressName
-  address_type =  "EXTERNAL"
+  address_type =  var.address_type
   ip_version = var.IPVersion
 }
 
 resource "google_compute_instance" "instance" {
   name         = var.vmname
-  machine_type = "n2-standard-2"
+  machine_type = var.machineType
   zone         = var.zone
 
   boot_disk {
@@ -82,12 +82,12 @@ resource "google_compute_firewall" "vmfirewallrule" {
   network = google_compute_network.vpc.self_link
   allow {
     protocol = "tcp"
-    ports    = [var.Port]
+    ports    = ["3000"]
   }
 
   priority  = 1000
   direction = "INGRESS"
 
-  source_ranges = ["0.0.0.0/0", "35.235.240.0/20"]
+  source_ranges = ["0.0.0.0/0"]
   target_tags   = ["webapp"]
 }
