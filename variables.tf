@@ -32,9 +32,17 @@ variable "num_db_subnets_per_vpc" {
   default     = "1"
 }
 
+variable "InOutGress" {
+  default = "INGRESS"
+}
 
 variable "webapp_cIDR_Range" {
   default = "10.0.1.0/24"
+  
+}
+
+variable "address_type" {
+  default = "EXTERNAL"
   
 }
 
@@ -43,13 +51,19 @@ variable "email" {
   
 }
 
+
+
+variable "machineType" {
+  default = "n2-standard-2"
+}
+
 variable "DB_CIDR_Range" {
   default = "10.0.2.0/24"
   
 }
 
 variable "Port" {
-  default = "3002"
+  default = "3000"
 }
 
 variable "ImagePath" {
