@@ -1,90 +1,82 @@
 variable "credentialsFile" {
-  default = "credentials.json"
+  default = "terraformCreds.json"
 }
 
 variable "projectId" {
-  default = "cloudassignment03-413923"
+  type = string
 }
 
 variable "region" {
-  default = "us-east1"
+  type = string
 }
 
-variable "mode"{
-  default = "REGIONAL"
+variable "database-name" {
+  type = string
+
+}
+
+variable "mode" {
+  type = string
 }
 variable "zone" {
-  default = "us-east1-b"
-}
-
-variable "num_vpc" {
-  description = "Number of VPCs to create"
-  default     = "1"
-}
-
-variable "num_webapp_subnets_per_vpc" {
-  description = "VPC number to create"
-  default     = "1"
-}
-
-variable "num_db_subnets_per_vpc" {
-  description = " subnets number to create per VPC"
-  default     = "1"
+  type = string
 }
 
 variable "InOutGress" {
-  default = "INGRESS"
+  type = string
 }
 
 variable "webapp_cIDR_Range" {
-  default = "10.0.1.0/24"
-  
+  type = string
+
 }
 
 variable "address_type" {
-  default = "EXTERNAL"
-  
+  type = string
+
 }
 
 variable "email" {
-  default = "csye-gcp-assignment04-sa@cloudassignment03-413923.iam.gserviceaccount.com"
-  
+  type = string
+
 }
 
 
 
 variable "machineType" {
-  default = "n2-standard-2"
+  type = string
 }
 
 variable "DB_CIDR_Range" {
-  default = "10.0.2.0/24"
-  
+  type = string
+
 }
 
 variable "Port" {
-  default = "3000"
+  type = string
 }
 
 variable "ImagePath" {
-  default = "projects/cloudassignment03-413923/global/images/cloud-packer-vm-custom-image"  
+  type = string
 }
 
 variable "vmname" {
-  default = "gcpvm-instance"
-  
+  type = string
+
 }
 
 variable "IPVersion" {
-  default = "IPV4"
+  type = string
 }
 
 variable "gcpcomputeaddressName" {
-  default = "ipaddressforgcp"
-  
+  type = string
+
 }
 
 variable "firewallRuleName" {
-  default = "vmfirewall"
-  
+  type = string
+
 }
+
+
