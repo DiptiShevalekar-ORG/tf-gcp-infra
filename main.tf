@@ -162,18 +162,6 @@ resource "google_project_iam_binding" "vm_metricswriter" {
 #   ]
 # }
 
-# resource "google_project_iam_binding" "project_monitoring" {
-#   project = var.projectId
-
-#   role = "roles/monitoring.metricWriter"
-#   members = [
-#     "serviceAccount:service-account-iam-id@csye6225-414121.iam.gserviceaccount.com"
-#   ]
-# }
-
-
-
-
 resource "google_compute_instance" "instance" {
   name         = var.vmname
   machine_type = var.machineType
