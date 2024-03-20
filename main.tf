@@ -9,7 +9,8 @@ provider "google" {
 # }
 
 resource "google_compute_network" "vpc" {
-  name                            = "webappp-vpc-1"
+
+  name                            = "webapp-vpc"
   auto_create_subnetworks         = false
   routing_mode                    = var.mode
   delete_default_routes_on_create = true
@@ -65,7 +66,7 @@ resource "google_compute_firewall" "vmfirewallrule" {
 
 
 resource "google_compute_global_address" "private_ip_block" {
-  name          = "private-ip-block1"
+  name          = "private-ip-block"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   ip_version    = var.IPVersion
@@ -113,9 +114,9 @@ resource "google_sql_database" "webapp" {
 }
 
 resource "random_password" "password" {
-  length           = 16
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  length  = 16
+  special = true
+ // override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 
@@ -128,57 +129,10 @@ resource "google_sql_user" "webapp" {
 //Host = google_sql_database_instance.csye6225.pr
 
 
-resource "google_dns_record_set" "a_record" {
-  name         = "diptishevalekar.online."
-  managed_zone = "cloud-dipti-zone"
-  type         = "A"
-  ttl          = 60
-  rrdatas      = [google_compute_instance.instance.network_interface[0].access_config[0].nat_ip]
-}
-
-resource "google_service_account" "service_account_iam" {
-  account_id   = "logger-sa-assignment06"
-  display_name = "logger-sa-assignment06"
-}
-
-resource "google_project_iam_binding" "vm_loggingadmin" {
-  project = var.projectId
-  role    = "roles/logging.admin"
-  members = ["serviceAccount:${google_service_account.service_account_iam.email}"]
-}
-
-resource "google_project_iam_binding" "vm_metricswriter" {
-  project = var.projectId
-  role    = "roles/monitoring.metricWriter"
-  members = ["serviceAccount:${google_service_account.service_account_iam.email}"]
-}
-
-#setting iam role to service account
-# resource "google_project_iam_binding" "project" {
-#   project = var.projectId
-#   role = "roles/logging.admin"
-#   members = [
-#     "serviceAccount:service-account-iam-id@csye6225-414121.iam.gserviceaccount.com"
-#   ]
-# }
-
-# resource "google_project_iam_binding" "project_monitoring" {
-#   project = var.projectId
-
-#   role = "roles/monitoring.metricWriter"
-#   members = [
-#     "serviceAccount:service-account-iam-id@csye6225-414121.iam.gserviceaccount.com"
-#   ]
-# }
-
-
-
-
 resource "google_compute_instance" "instance" {
   name         = var.vmname
   machine_type = var.machineType
   zone         = var.zone
-  depends_on = [google_project_iam_binding.vm_metricswriter]
 
   boot_disk {
     initialize_params {
@@ -198,7 +152,7 @@ resource "google_compute_instance" "instance" {
   }
 
   service_account {
-    email  = google_service_account.service_account_iam.email
+    email  = var.email
     scopes = ["cloud-platform"]
   }
 
@@ -214,8 +168,13 @@ PASSWORD=${random_password.password.result}
 HOST=${google_sql_database_instance.csye6225.private_ip_address}
 PORT=3000
 EOF'
-
-sudo systemctl restart systemdSetup.service
+sudo chown -R csye6225:csye6225 /opt/webappUnzipped/Dipti_Shevalekar_002245703_01
+sudo chmod -R 755 /opt/webappUnzipped/Dipti_Shevalekar_002245703_01
+sudo systemctl daemon-reload
+sudo systemctl enable systemdSetup.service
+sudo systemctl start systemdSetup.service
+cd /opt/webappUnzipped/Dipti_Shevalekar_002245703_01/
+node server.js
 
 SCRIPT
 
