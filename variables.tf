@@ -14,6 +14,34 @@ variable "database-name" {
   type = string
 
 }
+variable "cloud_function_name" {
+  type = string
+  
+}
+
+variable "entry_point" {
+ type = string
+}
+
+variable "MAILGUN_API_KEY" {
+  type = string
+}
+
+variable "cloud_function_timeout" {
+  type = number
+}
+variable "cloud_function_available_memory_mb" {
+  type = string
+}
+
+variable "WEBAPP_URL" {
+  type = string
+}
+
+variable "cloud_function_runtime" {
+  type = string
+}
+
 
 variable "mode" {
   type = string
