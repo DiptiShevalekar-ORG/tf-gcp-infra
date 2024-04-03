@@ -365,8 +365,8 @@ resource "google_compute_region_autoscaler" "my_autoscaler" {
   target             = google_compute_region_instance_group_manager.gcp-mig.self_link
 
    autoscaling_policy {
-    max_replicas    = 4
-    min_replicas    = 2
+    max_replicas    = 6
+    min_replicas    = 3
     cooldown_period = 60
 
     cpu_utilization {
