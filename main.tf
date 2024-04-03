@@ -52,7 +52,7 @@ resource "google_compute_firewall" "vmfirewallrule" {
   network = google_compute_network.vpc.self_link
   allow {
     protocol = "tcp"
-    ports    = [var.Port]
+    ports    = [var.Port,80]
   }
 
   priority  = 1000
@@ -86,7 +86,7 @@ resource "google_sql_database_instance" "csye6225" {
   depends_on       = [google_service_networking_connection.private_vpc_connection]
 
   settings {
-    tier              = "db-f1-micro"
+    tier              = "db-n1-standard-1"
     availability_type = var.mode
     disk_type         = "pd-ssd"
     disk_size         = 100
@@ -126,13 +126,13 @@ resource "google_sql_user" "webapp" {
 //Host = google_sql_database_instance.csye6225.pr
 
 
-resource "google_dns_record_set" "a_record" {
-  name         = "diptishevalekar.online."
-  managed_zone = "cloud-dipti-zone"
-  type         = "A"
-  ttl          = 60
-  rrdatas      = [google_compute_instance.instance.network_interface[0].access_config[0].nat_ip]
-}
+# resource "google_dns_record_set" "a_record" {
+#   name         = "diptishevalekar.online."
+#   managed_zone = "cloud-dipti-zone"
+#   type         = "A"
+#   ttl          = 60
+#   rrdatas      = [google_compute_instance.instance.network_interface[0].access_config[0].nat_ip]
+# }
 
 resource "google_service_account" "service_account_iam" {
   account_id   = "logger-sa-assignment06"
@@ -197,66 +197,16 @@ resource "google_project_iam_binding" "cloud-vpc-access-user" {
   role    = "roles/vpcaccess.user"
   members = ["serviceAccount:${google_service_account.service_account_cloudfunction.email}"]
 }
-
-#setting iam role to service account
-# resource "google_project_iam_binding" "project" {
-#   project = var.projectId
-#   role = "roles/logging.admin"
-#   members = [
-#     "serviceAccount:service-account-iam-id@csye6225-414121.iam.gserviceaccount.com"
-#   ]
-# }
-
-resource "google_compute_instance" "instance" {
-  name         = var.vmname
-  machine_type = var.machineType
-  zone         = var.zone
-  depends_on   = [google_project_iam_binding.vm_metricswriter]
-
-  boot_disk {
-    initialize_params {
-      image = var.ImagePath
-      size  = 100
-      type  = "pd-balanced"
-    }
-  }
-
-  network_interface {
-    network    = google_compute_network.vpc.self_link
-    subnetwork = google_compute_subnetwork.webapp_subnet.self_link
-    access_config {
-      // nat_ip = google_compute_address.gcpcomputeaddress.address
-      //
-    }
-  }
-
-  service_account {
-    email  = google_service_account.service_account_iam.email
-    scopes = ["cloud-platform", "pubsub"]
-  }
-
-  tags = ["webapp"]
-
-  metadata_startup_script = <<-SCRIPT
-  
-#!/bin/bash
-
-
-sudo bash -c 'cat <<EOF > /opt/webappUnzipped/Dipti_Shevalekar_002245703_01/.env
-DB_USERNAME=${google_sql_user.webapp.name}
-DATABASE=${google_sql_database.webapp.name}
-PASSWORD=${random_password.password.result}
-HOST=${google_sql_database_instance.csye6225.private_ip_address}
-PORT=3000
-EOF'
-sudo chown -R csye6225:csye6225 opt/webappUnzipped/Dipti_Shevalekar_002245703_01
-sudo chmod -R 755 opt/webappUnzipped/Dipti_Shevalekar_002245703_01
-sudo systemctl restart systemdSetup.service
-
-
-SCRIPT
-
+resource "google_pubsub_topic_iam_binding" "binding" {
+  project = var.projectId
+  topic   = "verify_email"
+  role    = "roles/pubsub.publisher"
+  members = [
+    "serviceAccount:${google_service_account.service_account_cloudfunction.email}",
+  ]
 }
+
+
 
 resource "google_vpc_access_connector" "my_connector" {
   name            = "my-vpc-connector"
@@ -273,13 +223,6 @@ resource "google_pubsub_topic" "verify_email" {
   # }
 }
 
-# resource "google_pubsub_subscription" "verify_email_sub" {
-#   name  = "verify-email-sub"
-#   topic = google_pubsub_topic.verify_email.name
-#   # push_config {
-#   #   push_endpoint = "https://your-cloud-function-url"
-#   # }
-# }
 
 resource "google_cloudfunctions2_function" "verify_email" {
   name        = var.cloud_function_name
@@ -327,3 +270,224 @@ resource "google_cloudfunctions2_function" "verify_email" {
 
   depends_on = [google_pubsub_topic.verify_email]
 }
+
+resource "google_compute_region_instance_template" "csye-ci-template" {
+  name         = "csye-ci-template"
+  machine_type = var.machineType
+  region       = var.region
+  tags         = ["webapp"]
+
+  scheduling {
+    automatic_restart   = true
+    on_host_maintenance = "MIGRATE"
+  }
+  disk {
+    source_image = var.ImagePath
+    auto_delete  = true
+      disk_size_gb = 100
+    disk_type = "pd-balanced"
+
+   }
+     lifecycle{
+    create_before_destroy = true
+  }
+  network_interface {
+    network    = google_compute_network.vpc.self_link
+    subnetwork = google_compute_subnetwork.webapp_subnet.self_link
+    access_config {
+       network_tier = "PREMIUM"
+    }
+  }
+
+  service_account {
+    email  = google_service_account.service_account_cloudfunction.email
+    scopes = ["logging-write", "monitoring-write", "cloud-platform", "pubsub"]
+  }
+
+  metadata_startup_script = <<-SCRIPT
+  
+ #!/bin/bash
+
+ sudo bash -c 'cat <<EOF > /opt/webappUnzipped/Dipti_Shevalekar_002245703_01/.env
+ DB_USERNAME=${google_sql_user.webapp.name}
+ DATABASE=${google_sql_database.webapp.name}
+ PASSWORD=${random_password.password.result}
+ HOST=${google_sql_database_instance.csye6225.private_ip_address}
+ PORT=3000
+ EOF'
+ sudo chown -R csye6225:csye6225 opt/webappUnzipped/Dipti_Shevalekar_002245703_01
+ sudo chmod -R 755 opt/webappUnzipped/Dipti_Shevalekar_002245703_01
+ sudo systemctl restart systemdSetup.service
+ SCRIPT
+
+
+  depends_on = [google_project_iam_binding.vm_metricswriter]
+
+
+}
+
+
+
+resource "google_compute_health_check" "health_check" {
+  name                = "health-check"
+  check_interval_sec  = 5
+  timeout_sec         = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 10
+
+  https_health_check {
+    request_path = "/healthz"
+    port         = var.Port
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "gcp-mig" {
+  name = "gcp-mig"
+  base_instance_name         = "csye-ci-instance"
+  region                     = var.region
+ // target_size = 5
+  version {
+    instance_template = google_compute_region_instance_template.csye-ci-template.self_link
+  }
+ auto_healing_policies {
+    health_check      = google_compute_health_check.health_check.self_link
+    initial_delay_sec = 300
+  }
+  named_port {
+    name = "http"
+    port = var.Port
+  }
+}
+
+resource "google_compute_region_autoscaler" "my_autoscaler" {
+  name               = "my-autoscaler"
+  region =    var.region
+  target             = google_compute_region_instance_group_manager.gcp-mig.self_link
+
+   autoscaling_policy {
+    max_replicas    = 4
+    min_replicas    = 2
+    cooldown_period = 60
+
+    cpu_utilization {
+      target = 0.05
+    }
+  }
+}
+module "gce-lb-http" {
+  source  = "terraform-google-modules/lb-http/google"
+  version = "~> 10.0"
+  project       = var.projectId
+  name          = "group-http-lb"
+  target_tags   = ["webapp"]  
+
+  ssl = true
+  managed_ssl_certificate_domains = ["diptishevalekar.online"]
+  http_forward = false
+  create_address = true
+  network = google_compute_network.vpc.self_link
+  backends = {
+    default = {
+      port_name    = "http"  
+      protocol     = "HTTP"
+      timeout_sec  = 10
+      enable_cdn = false
+ 
+      health_check = {
+        request_path = "/healthz"
+        port         = 3000  
+      }
+
+      log_config = {
+        enable      = true
+        sample_rate = 1.0
+      }
+
+      groups = [
+        {
+          group = google_compute_region_instance_group_manager.gcp-mig.instance_group
+        },
+      ]
+      firewall_networks               =  [google_compute_network.vpc.name]
+
+      iap_config = {
+        enable = false
+      }
+    }
+  }
+}
+resource "google_dns_record_set" "a_record" {
+  name         = "diptishevalekar.online."
+  managed_zone = "cloud-dipti-zone"
+  type         = "A"
+  ttl          = 60
+  rrdatas      = [module.gce-lb-http.external_ip]
+}
+
+
+#setting iam role to service account
+# resource "google_project_iam_binding" "project" {
+#   project = var.projectId
+#   role = "roles/logging.admin"
+#   members = [
+#     "serviceAccount:service-account-iam-id@csye6225-414121.iam.gserviceaccount.com"
+#   ]
+# }
+
+# resource "google_compute_instance" "instance" {
+#   name         = var.vmname
+#   machine_type = var.machineType
+#   zone         = var.zone
+#   depends_on   = [google_project_iam_binding.vm_metricswriter]
+
+#   boot_disk {
+#     initialize_params {
+#       image = var.ImagePath
+#       size  = 100
+#       type  = "pd-balanced"
+#     }
+#   }
+
+#   network_interface {
+#     network    = google_compute_network.vpc.self_link
+#     subnetwork = google_compute_subnetwork.webapp_subnet.self_link
+#     access_config {
+#       // nat_ip = google_compute_address.gcpcomputeaddress.address
+#       //
+#     }
+#   }
+
+#   service_account {
+#     email  = google_service_account.service_account_iam.email
+#     scopes = ["cloud-platform", "pubsub"]
+#   }
+
+#   tags = ["webapp"]
+
+#   metadata_startup_script = <<-SCRIPT
+  
+# #!/bin/bash
+
+
+# sudo bash -c 'cat <<EOF > /opt/webappUnzipped/Dipti_Shevalekar_002245703_01/.env
+# DB_USERNAME=${google_sql_user.webapp.name}
+# DATABASE=${google_sql_database.webapp.name}
+# PASSWORD=${random_password.password.result}
+# HOST=${google_sql_database_instance.csye6225.private_ip_address}
+# PORT=3000
+# EOF'
+# sudo chown -R csye6225:csye6225 opt/webappUnzipped/Dipti_Shevalekar_002245703_01
+# sudo chmod -R 755 opt/webappUnzipped/Dipti_Shevalekar_002245703_01
+# sudo systemctl restart systemdSetup.service
+
+
+# SCRIPT
+
+# }
+# resource "google_pubsub_subscription" "verify_email_sub" {
+#   name  = "verify-email-sub"
+#   topic = google_pubsub_topic.verify_email.name
+#   # push_config {
+#   #   push_endpoint = "https://your-cloud-function-url"
+#   # }
+# }
