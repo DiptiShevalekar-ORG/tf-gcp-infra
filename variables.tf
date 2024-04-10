@@ -19,6 +19,28 @@ variable "cloud_function_name" {
   
 }
 
+variable "default_service_account" {
+  type = string
+}
+
+variable "sbucketobjectname" {
+  type = string
+  
+}
+
+
+variable "sbucketname" {
+  type = string
+  
+}
+
+variable "instance_image_family" {
+  type = string
+  
+}
+
+
+
 variable "entry_point" {
  type = string
 }
