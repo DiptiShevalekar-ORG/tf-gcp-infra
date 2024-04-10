@@ -3,10 +3,6 @@ provider "google" {
   region      = var.region
 }
 
-# locals {
-#   vpc_names = [for i in range(var.num_vpc) : "csye-vpc-${i}"]
-# }
-
 resource "google_compute_network" "vpc" {
   name                            = "webapp-vpc-2"
   auto_create_subnetworks         = false
@@ -37,28 +33,19 @@ resource "google_compute_route" "webapp_route" {
   tags             = ["webapp"]
 }
 
-# resource "google_compute_address" "gcpcomputeaddress" {
-#   project = var.projectId
-#   name = var.gcpcomputeaddressName
-#   address_type =  var.address_type
-#   ip_version = var.IPVersion
-# }
-
-
-
 resource "google_compute_firewall" "vmfirewallrule" {
 
   name    = var.firewallRuleName
   network = google_compute_network.vpc.self_link
   allow {
     protocol = "tcp"
-    ports    = [var.Port,80]
+    ports    = [var.Port,22]
   }
 
   priority  = 1000
   //direction = var.InOutGress
 
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
   target_tags   = ["webapp"]
 }
 
@@ -84,12 +71,13 @@ resource "google_sql_database_instance" "csye6225" {
   region           = var.region
   database_version = "MYSQL_8_0"
   depends_on       = [google_service_networking_connection.private_vpc_connection]
+  encryption_key_name = google_kms_crypto_key.crypto_sign_key_sql.id
 
   settings {
-    tier              = "db-n1-standard-1"
+    tier              = "db-g1-small"
     availability_type = var.mode
     disk_type         = "pd-ssd"
-    disk_size         = 100
+    disk_size         = 10
     backup_configuration {
       enabled            = true
       binary_log_enabled = true
@@ -122,17 +110,6 @@ resource "google_sql_user" "webapp" {
   instance = google_sql_database_instance.csye6225.name
   password = random_password.password.result
 }
-
-//Host = google_sql_database_instance.csye6225.pr
-
-
-# resource "google_dns_record_set" "a_record" {
-#   name         = "diptishevalekar.online."
-#   managed_zone = "cloud-dipti-zone"
-#   type         = "A"
-#   ttl          = 60
-#   rrdatas      = [google_compute_instance.instance.network_interface[0].access_config[0].nat_ip]
-# }
 
 resource "google_service_account" "service_account_iam" {
   account_id   = "logger-sa-assignment06"
@@ -197,16 +174,139 @@ resource "google_project_iam_binding" "cloud-vpc-access-user" {
   role    = "roles/vpcaccess.user"
   members = ["serviceAccount:${google_service_account.service_account_cloudfunction.email}"]
 }
-resource "google_pubsub_topic_iam_binding" "binding" {
-  project = var.projectId
-  topic   = "verify_email"
-  role    = "roles/pubsub.publisher"
-  members = [
-    "serviceAccount:${google_service_account.service_account_cloudfunction.email}",
-  ]
+
+
+data "google_storage_project_service_account" "gcp_saccount" {
+
+}
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key_bucket" {
+  crypto_key_id = google_kms_crypto_key.crypto_sign_key_bucket.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = ["serviceAccount:${data.google_storage_project_service_account.gcp_saccount.email_address}"]
+}
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key_object" {
+  crypto_key_id = google_kms_crypto_key.crypto_sign_key_bucket_object.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = ["serviceAccount:${data.google_storage_project_service_account.gcp_saccount.email_address}"]
 }
 
 
+resource "google_kms_crypto_key_iam_binding" "crypto_key_vm" {
+  crypto_key_id = google_kms_crypto_key.crypto_sign_key_vm.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:${var.default_service_account}",
+  ]
+}
+
+resource "google_storage_bucket" "storage_bucket" {
+  name                        = var.sbucketname
+  location                    = var.region
+  storage_class               = "STANDARD"
+  force_destroy               = true
+  uniform_bucket_level_access = true
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.crypto_sign_key_bucket.id
+  }
+
+  depends_on = [google_kms_crypto_key_iam_binding.crypto_key_bucket]
+}
+
+resource "google_storage_bucket_object" "storage_bucket_object" {
+  name         = var.sbucketobjectname
+  bucket       = google_storage_bucket.storage_bucket.name
+  source       = "./FORK_serverless.zip"
+  kms_key_name = google_kms_crypto_key.crypto_sign_key_bucket_object.id
+}
+
+resource "google_project_service_identity" "gcp_cloud_sql_sa" {
+  project  = var.projectId
+  provider = google-beta
+  service  = "sqladmin.googleapis.com"
+}
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key_sql" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.crypto_sign_key_sql.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+
+  members = [
+    "serviceAccount:${google_project_service_identity.gcp_cloud_sql_sa.email}",
+  ]
+}
+
+resource "google_kms_key_ring" "key_ring" {
+  name     = "kms_key-new3"
+  location = var.region
+  project = var.projectId
+}
+
+resource "google_kms_crypto_key" "crypto_sign_key_bucket_object" {
+  name     = "crypto_sign_key_bucket_object-new3"
+  key_ring = google_kms_key_ring.key_ring.id
+  purpose  = "ENCRYPT_DECRYPT"
+
+  version_template {
+    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+  lifecycle {
+    prevent_destroy = false
+  }
+
+  rotation_period = "2592000s"
+}
+
+
+resource "google_kms_crypto_key" "crypto_sign_key_vm" {
+  name     = "crypto_sign_key_vm-new3"
+  key_ring = google_kms_key_ring.key_ring.id
+  //purpose  = "ENCRYPT_DECRYPT"
+
+  # version_template {
+  #   algorithm =  "GOOGLE_SYMMETRIC_ENCRYPTION"
+  # }
+  lifecycle {
+    prevent_destroy = false
+  }
+  rotation_period = "2592000s"
+}
+
+
+resource "google_kms_crypto_key" "crypto_sign_key_bucket" {
+  name     = "crypto_sign_key_bucket_key-new3"
+  key_ring = google_kms_key_ring.key_ring.id
+  purpose  = "ENCRYPT_DECRYPT"
+
+  version_template {
+    algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+  lifecycle {
+    prevent_destroy = false
+  }
+
+  rotation_period = "2592000s"
+}
+
+resource "google_kms_crypto_key" "crypto_sign_key_sql" {
+  name     = "crypto_sign_key_sql-new3"
+  key_ring = google_kms_key_ring.key_ring.id
+  purpose  = "ENCRYPT_DECRYPT"
+
+  version_template {
+    algorithm =  "GOOGLE_SYMMETRIC_ENCRYPTION"
+  }
+  lifecycle {
+    prevent_destroy = false
+  }
+
+  rotation_period = "2592000s"
+}
 
 resource "google_vpc_access_connector" "my_connector" {
   name            = "my-vpc-connector"
@@ -214,15 +314,13 @@ resource "google_vpc_access_connector" "my_connector" {
   ip_cidr_range   = "10.8.0.0/28"
 }
 
-
 resource "google_pubsub_topic" "verify_email" {
   name                       = "verify_email"
   message_retention_duration = "604800s"
-  # message_storage_policy {
-  #   allowed_persistence_regions = [var.region]
-  # }
+  message_storage_policy {
+    allowed_persistence_regions = [var.region]
+  }
 }
-
 
 resource "google_cloudfunctions2_function" "verify_email" {
   name        = var.cloud_function_name
@@ -234,8 +332,8 @@ resource "google_cloudfunctions2_function" "verify_email" {
     entry_point = var.entry_point
     source {
       storage_source {
-        bucket = "cloud-csye6225-bucket"
-        object = "FORK_serverless.zip"
+        bucket = google_storage_bucket.storage_bucket.name
+        object = google_storage_bucket_object.storage_bucket_object.name
       }
     }
   }
@@ -257,7 +355,6 @@ resource "google_cloudfunctions2_function" "verify_email" {
       PASSWORD=random_password.password.result
       HOST=google_sql_database_instance.csye6225.private_ip_address
     }
-
   }
 
   event_trigger {
@@ -277,15 +374,20 @@ resource "google_compute_region_instance_template" "csye-ci-template" {
   region       = var.region
   tags         = ["webapp"]
 
-  scheduling {
-    automatic_restart   = true
-    on_host_maintenance = "MIGRATE"
-  }
+  # scheduling {
+  #   automatic_restart   = true
+  #   on_host_maintenance = "MIGRATE"
+  # }
+
+
   disk {
-    source_image = var.ImagePath
-    auto_delete  = true
-      disk_size_gb = 100
+    source_image = var.instance_image_family
+    //auto_delete  = true
+      disk_size_gb = 20
     disk_type = "pd-balanced"
+    disk_encryption_key {
+       kms_key_self_link = google_kms_crypto_key.crypto_sign_key_vm.id
+    }
 
    }
      lifecycle{
@@ -295,15 +397,15 @@ resource "google_compute_region_instance_template" "csye-ci-template" {
     network    = google_compute_network.vpc.self_link
     subnetwork = google_compute_subnetwork.webapp_subnet.self_link
     access_config {
-       network_tier = "PREMIUM"
+      network_tier = "PREMIUM"
     }
   }
 
   service_account {
-    email  = google_service_account.service_account_cloudfunction.email
-    scopes = ["logging-write", "monitoring-write", "cloud-platform", "pubsub"]
+    email  = google_service_account.service_account_iam.email
+    scopes = ["cloud-platform", "pubsub"]
   }
-
+ 
   metadata_startup_script = <<-SCRIPT
   
  #!/bin/bash
@@ -322,20 +424,18 @@ resource "google_compute_region_instance_template" "csye-ci-template" {
 
 
   depends_on = [google_project_iam_binding.vm_metricswriter]
-
-
 }
 
 
 
 resource "google_compute_health_check" "health_check" {
   name                = "health-check"
-  check_interval_sec  = 5
+  check_interval_sec  = 10
   timeout_sec         = 5
   healthy_threshold   = 2
   unhealthy_threshold = 10
 
-  https_health_check {
+  http_health_check {
     request_path = "/healthz"
     port         = var.Port
   }
@@ -350,7 +450,7 @@ resource "google_compute_region_instance_group_manager" "gcp-mig" {
     instance_template = google_compute_region_instance_template.csye-ci-template.self_link
   }
  auto_healing_policies {
-    health_check      = google_compute_health_check.health_check.self_link
+    health_check      = google_compute_health_check.health_check.id
     initial_delay_sec = 300
   }
   named_port {
@@ -365,8 +465,8 @@ resource "google_compute_region_autoscaler" "my_autoscaler" {
   target             = google_compute_region_instance_group_manager.gcp-mig.self_link
 
    autoscaling_policy {
-    max_replicas    = 6
-    min_replicas    = 3
+    max_replicas    = 4
+    min_replicas    = 2
     cooldown_period = 60
 
     cpu_utilization {
@@ -374,6 +474,7 @@ resource "google_compute_region_autoscaler" "my_autoscaler" {
     }
   }
 }
+
 module "gce-lb-http" {
   source  = "terraform-google-modules/lb-http/google"
   version = "~> 10.0"
@@ -395,7 +496,7 @@ module "gce-lb-http" {
  
       health_check = {
         request_path = "/healthz"
-        port         = 3000  
+        port         = 3000 
       }
 
       log_config = {
@@ -423,6 +524,20 @@ resource "google_dns_record_set" "a_record" {
   ttl          = 60
   rrdatas      = [module.gce-lb-http.external_ip]
 }
+
+
+
+# variable "secrets" {
+#   description = "A map of secret names and their values"
+#   type        = map(string)
+#   default     = {
+#  DB_USERNAME=google_sql_user.webapp.name
+#  DATABASE=google_sql_database.webapp.name
+#  PASSWORD=random_password.password.result
+#  HOST=google_sql_database_instance.csye6225.private_ip_address
+#  PORT=3000
+#   }
+# }
 
 
 #setting iam role to service account
@@ -491,3 +606,13 @@ resource "google_dns_record_set" "a_record" {
 #   #   push_endpoint = "https://your-cloud-function-url"
 #   # }
 # }
+
+
+resource "google_pubsub_topic_iam_binding" "binding" {
+  project = var.projectId
+  topic   = "verify_email"
+  role    = "roles/pubsub.publisher"
+  members = [
+    "serviceAccount:${google_service_account.service_account_iam.email}",
+    ]
+}
